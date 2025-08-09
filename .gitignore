@@ -1,15 +1,12 @@
 ﻿# Python
 __pycache__/
 *.py[cod]
-*.pyo
+*.pyc
 
 # Node
 web/node_modules/
 web/.env.local
 
-# Venvs
-.venv/
-
-# OS
+# OS cruft
 .DS_Store
 Thumbs.db
