@@ -119,7 +119,12 @@ export function SessionDetail() {
           <button className="text-xs text-blue-600" onClick={retry}>Retry</button>
         )}
       </div>
-      <div className="text-3xl font-extrabold">{data.pqs?.total ?? '-'}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-3xl font-extrabold">{data.pqs?.total ?? '-'}</div>
+        {sessionId && (
+          <a href={`/compare?a=${sessionId}`} className="text-sm text-indigo-600">Compare this session</a>
+        )}
+      </div>
       {data.pqs_v2 && (
         <span className="inline-block text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">PQS v2</span>
       )}

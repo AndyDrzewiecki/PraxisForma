@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { auth, db } from '../firebase'
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
 
 type Item = {
   id: string
@@ -45,6 +46,17 @@ export function Progress() {
     <div className="space-y-3">
       <h2 className="text-lg font-semibold">Progress</h2>
       <div className="space-y-2">
+        {points.length === 0 && (
+          <div className="text-sm text-gray-600">No sessions yet — upload your first throw.</div>
+        )}
+        {!!points.length && (
+          <div className="grid grid-cols-1 gap-3">
+            <Spark title="Total" dataKey="total" points={points} color="#1e88e5" />
+            <Spark title="Release angle" dataKey="release_angle_deg" points={points} color="#43a047" />
+            <Spark title="Chain order" dataKey="chain_order_score" points={points} color="#8e24aa" />
+            <Spark title="v_hand peak" dataKey="v_hand_peak_norm" points={points} color="#fb8c00" />
+          </div>
+        )}
         {points.map(p => (
           <div key={p.id} className="bg-white rounded shadow p-3 flex items-center justify-between">
             <div>
@@ -54,9 +66,29 @@ export function Progress() {
             <div className="flex items-center gap-3">
               <div className="text-xl font-bold">{p.total ?? '-'}</div>
               <Link to={`/s/${p.id}`} className="text-blue-600 text-sm">View</Link>
+              <Link to={`/compare?a=${p.id}`} className="text-indigo-600 text-sm">Compare</Link>
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function Spark({ title, dataKey, points, color }:{ title: string, dataKey: string, points: any[], color: string }) {
+  const data = points.map(p => ({ x: p.when ? p.when.getTime?.() || 0 : 0, y: (p as any)[dataKey] ?? null }))
+  return (
+    <div className="bg-white rounded shadow p-3">
+      <div className="text-sm text-gray-700 mb-1">{title}</div>
+      <div className="h-20">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <XAxis dataKey="x" hide />
+            <YAxis hide />
+            <Tooltip />
+            <Line type="monotone" dataKey="y" stroke={color} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
   )

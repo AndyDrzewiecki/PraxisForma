@@ -11,6 +11,8 @@ export function AdminCalibration() {
   const [form, setForm] = useState<any>({ components: {}, timing_windows: {}, notes: '' })
   const [selectedId, setSelectedId] = useState<string>('')
   const [message, setMessage] = useState<string>('')
+  const [sourceV2, setSourceV2] = useState<boolean>(false)
+  const [v2Bands, setV2Bands] = useState<any|null>(null)
 
   async function fetchList() {
     const token = await auth.currentUser?.getIdToken()
@@ -20,6 +22,7 @@ export function AdminCalibration() {
   }
 
   useEffect(() => { fetchList() }, [key.event, key.ageBand, key.sex, key.handedness])
+  useEffect(() => { if (sourceV2) fetchV2() }, [sourceV2, key.event, key.ageBand, key.sex, key.handedness])
 
   async function saveDraft() {
     setMessage('')
@@ -36,11 +39,26 @@ export function AdminCalibration() {
     setMessage(resp.ok ? 'Activated' : 'Activate failed')
   }
 
+  async function fetchV2() {
+    setMessage('')
+    const token = await auth.currentUser?.getIdToken()
+    const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/envelopes2?level=${key.ageBand}&sex=${key.sex}&hand=${key.handedness === 'right' ? 'R':'L'}`, { headers: { Authorization: `Bearer ${token}` } })
+    if (resp.ok) { const body = await resp.json(); setV2Bands(body) }
+  }
+  async function saveV2(bands: any) {
+    const token = await auth.currentUser?.getIdToken()
+    const payload = { level: key.ageBand, sex: key.sex, hand: key.handedness === 'right' ? 'R':'L', bands }
+    const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/envelopes2`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) })
+    setMessage(resp.ok ? 'Saved v2' : 'Save failed')
+    if (resp.ok) fetchV2()
+  }
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Admin Calibration Console</h2>
       {message && <div className="text-sm text-gray-700">{message}</div>}
       <div className="grid grid-cols-2 gap-3">
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sourceV2} onChange={e=>setSourceV2(e.target.checked)} /> Use JSON/GCS envelopes (v2)</label>
         <select value={key.event} onChange={e=>setKey(prev=>({...prev, event:e.target.value}))}>
           {['discus','shot_put_rotational','shot_put_glide'].map(v=> <option key={v} value={v}>{v}</option>)}
         </select>
@@ -56,14 +74,30 @@ export function AdminCalibration() {
       </div>
 
       <div className="bg-white rounded shadow p-3">
-        <div className="font-medium mb-2">Components JSON</div>
-        <textarea className="w-full h-40 border rounded p-2 font-mono text-xs" value={JSON.stringify(form.components || {}, null, 2)} onChange={e=> setForm((f:any)=> ({...f, components: safeParse(e.target.value)}))} />
-        <div className="font-medium mt-3 mb-2">Timing Windows JSON</div>
-        <textarea className="w-full h-40 border rounded p-2 font-mono text-xs" value={JSON.stringify(form.timing_windows || {}, null, 2)} onChange={e=> setForm((f:any)=> ({...f, timing_windows: safeParse(e.target.value)}))} />
-        <input className="w-full border rounded px-2 py-1 mt-2" placeholder="Notes" value={form.notes || ''} onChange={e=> setForm((f:any)=> ({...f, notes: e.target.value}))} />
-        <div className="mt-3 flex gap-2">
-          <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={saveDraft}>Save Draft</button>
-        </div>
+        {!sourceV2 && (
+          <>
+            <div className="font-medium mb-2">Components JSON (legacy Firestore)</div>
+            <textarea className="w-full h-40 border rounded p-2 font-mono text-xs" value={JSON.stringify(form.components || {}, null, 2)} onChange={e=> setForm((f:any)=> ({...f, components: safeParse(e.target.value)}))} />
+            <div className="font-medium mt-3 mb-2">Timing Windows JSON</div>
+            <textarea className="w-full h-40 border rounded p-2 font-mono text-xs" value={JSON.stringify(form.timing_windows || {}, null, 2)} onChange={e=> setForm((f:any)=> ({...f, timing_windows: safeParse(e.target.value)}))} />
+            <input className="w-full border rounded px-2 py-1 mt-2" placeholder="Notes" value={form.notes || ''} onChange={e=> setForm((f:any)=> ({...f, notes: e.target.value}))} />
+            <div className="mt-3 flex gap-2">
+              <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={saveDraft}>Save Draft</button>
+            </div>
+          </>
+        )}
+        {sourceV2 && (
+          <>
+            <div className="font-medium mb-2">Envelopes v2 (JSON/GCS)</div>
+            <div className="text-xs text-gray-600 mb-2">Source: {v2Bands?.source ?? '-'}</div>
+            <textarea className="w-full h-64 border rounded p-2 font-mono text-xs" value={JSON.stringify(v2Bands?.bands || {}, null, 2)} onChange={e=> setV2Bands((prev:any)=> ({...(prev||{}), bands: safeParse(e.target.value)}))} />
+            <div className="mt-3 flex gap-2">
+              <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={()=> saveV2(v2Bands?.bands || {})}>Save v2</button>
+              <button className="px-4 py-2 border rounded" onClick={fetchV2}>Refresh</button>
+              <SeedButtons onSeed={saveV2} />
+            </div>
+          </>
+        )}
       </div>
 
       <div className="bg-white rounded shadow p-3">
@@ -90,6 +124,23 @@ export function AdminCalibration() {
 
 function safeParse(text: string) {
   try { return JSON.parse(text) } catch { return {} }
+}
+
+function SeedButtons({ onSeed }: { onSeed: (bands: any) => void }) {
+  const [busy, setBusy] = useState(false)
+  async function seed(which: 'discus'|'shot') {
+    setBusy(true)
+    try {
+      const { discusOpenMRight, shotRotOpenMRight } = await import('../data/envelopeSeeds')
+      onSeed(which === 'discus' ? discusOpenMRight : shotRotOpenMRight)
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="flex gap-2">
+      <button disabled={busy} className="px-3 py-1 border rounded" onClick={()=>seed('discus')}>Seed discus</button>
+      <button disabled={busy} className="px-3 py-1 border rounded" onClick={()=>seed('shot')}>Seed shot</button>
+    </div>
+  )
 }
 
 function CompareBlock() {

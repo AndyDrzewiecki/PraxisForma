@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 import math
 import numpy as np
+import os
 
 from backend.pqs_algorithm import Frame, Landmark
 from backend.biomech import envelopes as E
@@ -38,6 +39,10 @@ class FeatureSeries:
     thorax_omega_deg_s: np.ndarray
     pelvis_alpha_deg_s2: np.ndarray
     thorax_alpha_deg_s2: np.ndarray
+    pelvis_omega_deg_s_smooth: np.ndarray
+    thorax_omega_deg_s_smooth: np.ndarray
+    pelvis_alpha_deg_s2_smooth: np.ndarray
+    thorax_alpha_deg_s2_smooth: np.ndarray
     separation_deg: np.ndarray
     separation_vel: np.ndarray
     shoulder_tilt_deg: np.ndarray
@@ -50,6 +55,7 @@ class FeatureSeries:
     wrist_ext_deg: np.ndarray
     hand_speed_proxy: np.ndarray
     hand_speed_norm: np.ndarray
+    hand_speed_norm_smooth: np.ndarray
     com_smoothness: np.ndarray  # low is smoother
     release_angle_deg: Optional[float]
     release_height_norm: Optional[float]
@@ -91,7 +97,7 @@ def _center(a: Landmark, b: Landmark) -> Landmark:
     return Landmark(x=(a.x + b.x) / 2.0, y=(a.y + b.y) / 2.0)
 
 
-def compute_features(frames: List[Frame], handedness: str, release_idx: Optional[int]) -> Tuple[FeatureSeries, Phases, Dict[str, float]]:
+def compute_features(frames: List[Frame], handedness: str, release_idx: Optional[int], *, smooth_window: Optional[int] = None) -> Tuple[FeatureSeries, Phases, Dict[str, float]]:
     rf = resample_frames(frames)
     if not rf:
         empty = np.zeros((0,), dtype=float)
@@ -206,6 +212,25 @@ def compute_features(frames: List[Frame], handedness: str, release_idx: Optional
     wrist_ext = np.array(wrist_ext)
     conf = np.array(conf)
 
+    # Optional smoothing for stability
+    sw = smooth_window or int(os.getenv('PQS_SMOOTH_WINDOW') or 5)
+    def _ma(x: np.ndarray, w: int) -> np.ndarray:
+        if w is None or w <= 1 or len(x) == 0:
+            return x.copy()
+        w = int(max(1, w))
+        k = min(w, max(1, len(x)))
+        c = np.convolve(x, np.ones(k)/k, mode='same')
+        return c
+    pelvis_w_s = np.rad2deg(pelvis_w)
+    thorax_w_s = np.rad2deg(thorax_w)
+    pelvis_a_s = np.rad2deg(pelvis_a)
+    thorax_a_s = np.rad2deg(thorax_a)
+    pelvis_w_smooth = _ma(pelvis_w_s, sw)
+    thorax_w_smooth = _ma(thorax_w_s, sw)
+    pelvis_a_smooth = _ma(pelvis_a_s, sw)
+    thorax_a_smooth = _ma(thorax_a_s, sw)
+    hand_v_norm_smooth = _ma(hand_v_norm, sw)
+
     # Release metrics (approx)
     rel_angle = None
     rel_height = None
@@ -228,10 +253,14 @@ def compute_features(frames: List[Frame], handedness: str, release_idx: Optional
         t_ms=t_ms,
         pelvis_ang_deg=pelvis_ang,
         thorax_ang_deg=thorax_ang,
-        pelvis_omega_deg_s=np.rad2deg(pelvis_w),
-        thorax_omega_deg_s=np.rad2deg(thorax_w),
-        pelvis_alpha_deg_s2=np.rad2deg(pelvis_a),
-        thorax_alpha_deg_s2=np.rad2deg(thorax_a),
+        pelvis_omega_deg_s=pelvis_w_s,
+        thorax_omega_deg_s=thorax_w_s,
+        pelvis_alpha_deg_s2=pelvis_a_s,
+        thorax_alpha_deg_s2=thorax_a_s,
+        pelvis_omega_deg_s_smooth=pelvis_w_smooth,
+        thorax_omega_deg_s_smooth=thorax_w_smooth,
+        pelvis_alpha_deg_s2_smooth=pelvis_a_smooth,
+        thorax_alpha_deg_s2_smooth=thorax_a_smooth,
         separation_deg=separation_deg,
         separation_vel=separation_vel,
         shoulder_tilt_deg=shoulder_tilt,
@@ -244,6 +273,7 @@ def compute_features(frames: List[Frame], handedness: str, release_idx: Optional
         wrist_ext_deg=wrist_ext,
         hand_speed_proxy=hand_v,
         hand_speed_norm=hand_v_norm,
+        hand_speed_norm_smooth=hand_v_norm_smooth,
         com_smoothness=jerk,
         release_angle_deg=rel_angle,
         release_height_norm=rel_height,
@@ -351,9 +381,10 @@ def _summary_metrics(series: FeatureSeries, phases: Phases, handedness: str) -> 
         if best_i is None:
             best_i = int(np.argmax(arr))
         return best_i
-    p_idx = _first_pos_peak(series.pelvis_omega_deg_s)
-    t_idx = _first_pos_peak(series.thorax_omega_deg_s)
-    h_idx = int(np.argmax(series.hand_speed_norm) if len(series.hand_speed_norm) else 0)
+    # Use smoothed series for robust timing, but compute deltas without clamping
+    p_idx = _first_pos_peak(series.pelvis_omega_deg_s_smooth if len(series.pelvis_omega_deg_s_smooth) else series.pelvis_omega_deg_s)
+    t_idx = _first_pos_peak(series.thorax_omega_deg_s_smooth if len(series.thorax_omega_deg_s_smooth) else series.thorax_omega_deg_s)
+    h_idx = int(np.argmax(series.hand_speed_norm_smooth) if len(series.hand_speed_norm_smooth) else (np.argmax(series.hand_speed_norm) if len(series.hand_speed_norm) else 0))
     t_pelvis = int(series.t_ms[p_idx] if len(series.t_ms) else 0)
     t_thorax = int(series.t_ms[t_idx] if len(series.t_ms) else 0)
     t_hand = int(series.t_ms[h_idx] if len(series.t_ms) else 0)

@@ -10,6 +10,7 @@ import { SessionDetail } from './routes/SessionDetail'
 import { Settings } from './routes/Settings'
 import { AdminCalibration } from './routes/AdminCalibration'
 import { Progress } from './routes/Progress'
+import { Compare } from './routes/Compare'
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
@@ -20,6 +21,7 @@ const router = createBrowserRouter([
       { path: 'settings', element: <Settings /> },
       { path: 'progress', element: <Progress /> },
       { path: 'admin/calibration', element: <AdminCalibration /> },
+      { path: 'compare', element: <Compare /> },
     ] },
 ])
 

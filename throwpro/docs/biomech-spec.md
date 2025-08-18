@@ -21,4 +21,11 @@ Persistence
 - Per-frame series added under `pqs_v2.series`: `t_ms`, `separation_deg`, `ω_pelvis`, `ω_thorax`, `v_hand_norm`.
 - Summary metrics in `pqs_v2.metrics`: `Δhip_torso_ms`, `Δtorso_hand_ms`, `chain_order_score`, `α_peak_pelvis_pos`, `α_min_pelvis_neg`, `α_ratio`, `F_block_horiz_proxy`, `F_block_vert_proxy`, `v_hand_peak_norm`.
 
+Smoothing
+- Central differences on unwrapped radians for ω and α; optional moving-average smoothing (window W=5 frames by default) applied to `ω_pelvis`, `ω_thorax`, `α_pelvis`, `α_thorax`, and `v_hand_norm`.
+- Both raw and smoothed series are exposed: e.g., `ω_pelvis` and `ω_pelvis_smooth`.
+
+Hand speed normalization
+- Preferred basis: standing-height surrogate if available; else shoulder–hip composite length at t0. The goal is to reduce camera distance effects while tracking implement speed proxy.
+
 

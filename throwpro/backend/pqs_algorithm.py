@@ -231,6 +231,27 @@ def calculate_pqs_v2(frames: List[Frame], handedness: str, rel_idx: Optional[int
             "F_block_vert_proxy": float(metrics.get("F_block_vert_proxy", 0.0)),
         },
     }
+    # Band-fit helpers for frontend badges
+    def _band_fit(x: float, band: List[float], tol_frac: float = 0.2) -> str:
+        try:
+            lo, hi = float(band[0]), float(band[1])
+        except Exception:
+            return 'outside'
+        width = max(1.0, hi - lo)
+        tol = max(1.0, width * tol_frac)
+        if lo <= x <= hi:
+            # near edges if within tol from boundaries
+            if (x - lo) <= tol or (hi - x) <= tol:
+                return 'near'
+            return 'inside'
+        return 'outside'
+    sep_cfg = ((envelope.get('components') or {}).get('separation_sequencing') or {})
+    bf = {
+        'Δhip_torso_ms': _band_fit(float(metrics.get('Δhip_torso_ms', 0.0)), sep_cfg.get('Δhip_torso_ms') or [50.0, 120.0], 0.2),
+        'Δtorso_hand_ms': _band_fit(float(metrics.get('Δtorso_hand_ms', 0.0)), sep_cfg.get('Δtorso_hand_ms') or [40.0, 100.0], 0.2),
+        'chain_order_score': 'inside' if float(metrics.get('chain_order_score', 0.0)) >= float(sep_cfg.get('chain_order_score_min') or 0.7) else 'outside',
+    }
+    out['metrics_band_fit'] = bf
     if 'version' in envelope:
         out['envelope_version'] = envelope.get('version')
     # Expose series for compare UI

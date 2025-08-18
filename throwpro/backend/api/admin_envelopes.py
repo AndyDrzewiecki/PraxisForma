@@ -1,3 +1,40 @@
+from typing import Optional, Dict
+
+from fastapi import APIRouter, HTTPException, Header, Query
+from pydantic import BaseModel
+
+from backend.api.auth import verify_bearer_token
+from backend.biomech.envelope_store import resolve_envelope, upsert_envelope
+
+
+router = APIRouter(prefix="/admin/envelopes2")
+
+
+class EnvUpsert(BaseModel):
+    level: str
+    sex: str
+    hand: str
+    bands: Dict
+
+
+@router.post("")
+def post_envelope(env: EnvUpsert, authorization: Optional[str] = Header(default=None)):
+    uid = verify_bearer_token(authorization)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    # In production, check admin claim; here assume upstream gate
+    src = upsert_envelope(env.level, env.sex, env.hand, env.bands)
+    return {"ok": True, "source": src}
+
+
+@router.get("")
+def get_envelope(level: str = Query('X'), sex: str = Query('X'), hand: str = Query('X'), authorization: Optional[str] = Header(default=None)):
+    uid = verify_bearer_token(authorization)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    bands, src = resolve_envelope(level, sex, hand)
+    return {"bands": bands, "source": src}
+
 from typing import Optional, List, Dict
 
 from fastapi import APIRouter, HTTPException, Header
